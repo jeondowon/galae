@@ -3,7 +3,7 @@ import { REACTIONS, SHIFTS } from './data.js';
 
 export const STORAGE_KEY = 'garae.frontend.v1';
 export const STEPS = ['answer', 'result', 'opinions', 'reading', 'reflect', 'done', 'share'];
-export const emptyAnswer = () => ({ sel: null, submitted: false, shift: null, note: '', savedNote: '', rx: [], completed: false, sharedWith: [], shareDraft: null, lastStep: null });
+export const emptyAnswer = () => ({ sel: null, reason: '', submitted: false, shift: null, note: '', savedNote: '', rx: [], completed: false, sharedWith: [], shareDraft: null, lastStep: null });
 export const initialState = () => ({ started: false, answers: {}, groups: DEMO_GROUPS, joined: ['g1'] });
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -19,7 +19,7 @@ function restoreAnswer(value, id, groups) {
   const sharedWith = submitted ? strings(answer.sharedWith).filter(id => groups.some(g => g.id === id)) : [];
   const note = text(answer.note);
   return {
-    sel, submitted, shift, note, completed, sharedWith,
+    sel, reason: text(answer.reason), submitted, shift, note, completed, sharedWith,
     // 이전 버전에서 이미 저장·공유한 성찰만 공개용 문장으로 옮깁니다.
     savedNote: Object.hasOwn(answer, 'savedNote') ? text(answer.savedNote) : completed || sharedWith.length ? note : '',
     rx: strings(answer.rx).filter(r => REACTIONS.includes(r)),

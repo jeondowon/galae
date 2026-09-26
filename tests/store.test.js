@@ -7,6 +7,35 @@ function restore(saved) {
   try { return loadState(); } finally { delete globalThis.localStorage; }
 }
 
+test('선택 이유 초안은 질문별로 복원되고 제출 이후에도 성찰과 구분된다', () => {
+  let state = updateAnswer(initialState(), 'q037', { sel: 1, reason: '친구의 이야기를 먼저 듣고 싶어요.\n회복할 기회도 필요해요.' });
+  state = updateAnswer(state, 'q036', { reason: '다른 질문에 대한 생각' });
+  state = restore(state);
+  assert.equal(state.answers.q037.reason, '친구의 이야기를 먼저 듣고 싶어요.\n회복할 기회도 필요해요.');
+  assert.equal(state.answers.q036.reason, '다른 질문에 대한 생각');
+  assert.equal(state.answers.q037.submitted, false);
+  state = updateAnswer(state, 'q037', { submitted: true, shift: 1, note: '다른 의견을 읽은 뒤의 성찰' });
+  state = restore(saveReflection(state, 'q037'));
+  assert.equal(state.answers.q037.reason, '친구의 이야기를 먼저 듣고 싶어요.\n회복할 기회도 필요해요.');
+  assert.equal(state.answers.q037.savedNote, '다른 의견을 읽은 뒤의 성찰');
+  assert.deepEqual(state.answers.q037.sharedWith, []);
+});
+
+test('이유를 작성하지 않은 답변도 제출 상태를 유지한다', () => {
+  const state = restore(updateAnswer(initialState(), 'q037', { sel: 0, submitted: true }));
+  assert.equal(state.answers.q037.reason, '');
+  assert.equal(state.answers.q037.submitted, true);
+});
+
+test('기존 답변과 잘못된 이유 필드는 빈 이유로 복구하고 성찰을 보존한다', () => {
+  for (const reason of [undefined, null, 42, {}, []]) {
+    const state = restore({ ...initialState(), answers: { q037: { sel: 0, submitted: true, reason, note: '기존 성찰' } } });
+    assert.equal(state.answers.q037.reason, '');
+    assert.equal(state.answers.q037.note, '기존 성찰');
+    assert.equal(state.answers.q037.submitted, true);
+  }
+});
+
 test('성찰 초안은 복원되지만 저장 전까지 공유할 성찰을 변경하지 않는다', () => {
   let state = updateAnswer(initialState(), 'q037', { sel: 0, submitted: true, shift: 1, note: '저장한 문장' });
   state = saveReflection(state, 'q037');

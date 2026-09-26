@@ -66,7 +66,7 @@ export default function App() {
       const previous = STEPS[Math.max(0, STEPS.indexOf(step) - 1)];
       let flow;
       switch (step) {
-        case 'answer': flow = <Question question={question} answer={answer} onPick={sel => { if (!answer.submitted) patch(id, { sel }); }} onSubmit={() => { if (answer.sel === null) return; patch(id, { submitted: true }); flowGo('result'); }} />; break;
+        case 'answer': flow = <Question question={question} answer={answer} onPick={sel => { if (!answer.submitted) patch(id, { sel }); }} onReason={reason => { if (!answer.submitted) patch(id, { reason }); }} onSubmit={() => { if (answer.sel === null) return; patch(id, { submitted: true }); flowGo('result'); }} />; break;
         case 'result': flow = <Result question={question} sel={answer.sel} go={flowGo} />; break;
         case 'opinions': flow = <Opinions question={question} go={flowGo} rx={answer.rx} onRx={rx => patch(id, { rx })} />; break;
         case 'reading': flow = <Reading question={question} go={flowGo} />; break;
