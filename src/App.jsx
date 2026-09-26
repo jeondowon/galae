@@ -16,10 +16,9 @@ import Report from './screens/Report.jsx';
 import { Groups, GroupForm, GroupDetail, GroupMembers } from './screens/Groups.jsx';
 import { BottomNav, Header, Empty } from './components/UI.jsx';
 import { QUESTIONS, TODAY, dateLabel } from './questionData.js';
-import { STORAGE_KEY, loadState, emptyAnswer, updateAnswer, leaveGroup } from './store.js';
+import { STORAGE_KEY, STEPS, loadState, emptyAnswer, updateAnswer, saveReflection, questionStep, questionRoute, rememberQuestionRoute, leaveGroup } from './store.js';
 
 const routeFromLocation = () => location.hash.replace(/^#\/?/, '') || 'today';
-const STEPS = ['answer', 'result', 'opinions', 'reading', 'reflect', 'done', 'share'];
 
 export default function App() {
   const [state, setState] = useState(loadState);
@@ -38,10 +37,11 @@ export default function App() {
   }, [state]);
   useEffect(() => {
     if (mainRef.current) { mainRef.current.scrollTop = 0; mainRef.current.querySelector('h1')?.focus({ preventScroll: true }); }
+    setState(s => rememberQuestionRoute(s, route));
   }, [route, state.started]);
   function go(next) { if (next !== route) { location.hash = `/${next}`; setRoute(next); } }
   function welcomeGo(next) { if (next === 'onboard') setWelcome('onboard'); else setState(s => ({ ...s, started: true })); }
-  function openQuestion(id) { go(`question/${id}/${state.answers[id]?.submitted ? 'result' : 'answer'}`); }
+  function openQuestion(id) { go(questionRoute(id, state.answers[id])); }
   function patch(id, value) { setState(s => updateAnswer(s, id, value)); }
   function createGroup(fields) {
     const id = crypto.randomUUID();
@@ -61,7 +61,7 @@ export default function App() {
     active = id === TODAY.id ? 'today' : 'archive';
     if (question) {
       const answer = state.answers[id] || emptyAnswer();
-      const step = !answer.submitted ? 'answer' : requestedStep === 'done' && !answer.completed ? 'reflect' : STEPS.includes(requestedStep) ? requestedStep : 'result';
+      const step = questionStep(answer, requestedStep);
       const flowGo = next => STEPS.includes(next) ? go(`question/${id}/${next}`) : go(next);
       const previous = STEPS[Math.max(0, STEPS.indexOf(step) - 1)];
       let flow;
@@ -70,7 +70,7 @@ export default function App() {
         case 'result': flow = <Result question={question} sel={answer.sel} go={flowGo} />; break;
         case 'opinions': flow = <Opinions question={question} go={flowGo} rx={answer.rx} onRx={rx => patch(id, { rx })} />; break;
         case 'reading': flow = <Reading question={question} go={flowGo} />; break;
-        case 'reflect': flow = <Reflect shift={answer.shift} note={answer.note} onChange={value => patch(id, value)} onComplete={() => { if (answer.shift === null) return; patch(id, { completed: true }); flowGo('done'); }} />; break;
+        case 'reflect': flow = <Reflect shift={answer.shift} note={answer.note} onChange={value => patch(id, value)} onComplete={() => { if (answer.shift === null) return; setState(s => saveReflection(s, id)); flowGo('done'); }} />; break;
         case 'done': flow = <Done question={question} answer={answer} go={flowGo} />; break;
         case 'share': flow = <Share key={id} question={question} answer={answer} groups={state.groups.filter(g => state.joined.includes(g.id))} onDraft={shareDraft => patch(id, { shareDraft })} onSave={sharedWith => patch(id, { sharedWith, shareDraft: null })} go={go} />; break;
       }

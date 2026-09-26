@@ -1,6 +1,117 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, updateAnswer, leaveGroup, loadState, STORAGE_KEY } from '../src/store.js';
+import { initialState, updateAnswer, saveReflection, questionRoute, rememberQuestionRoute, leaveGroup, loadState, STORAGE_KEY } from '../src/store.js';
+
+function restore(saved) {
+  globalThis.localStorage = { getItem: () => JSON.stringify(saved) };
+  try { return loadState(); } finally { delete globalThis.localStorage; }
+}
+
+test('성찰 초안은 복원되지만 저장 전까지 공유할 성찰을 변경하지 않는다', () => {
+  let state = updateAnswer(initialState(), 'q037', { sel: 0, submitted: true, shift: 1, note: '저장한 문장' });
+  state = saveReflection(state, 'q037');
+  state = updateAnswer(state, 'q037', { sharedWith: ['g1', 'g2'], note: '작성 중인 문장' });
+  state = restore(state);
+  assert.equal(state.answers.q037.note, '작성 중인 문장');
+  assert.equal(state.answers.q037.savedNote, '저장한 문장');
+  state = saveReflection(state, 'q037');
+  assert.equal(state.answers.q037.savedNote, '작성 중인 문장');
+  assert.deepEqual(state.answers.q037.sharedWith, ['g1', 'g2']);
+  state = updateAnswer(state, 'q037', { note: '' });
+  assert.equal(state.answers.q037.savedNote, '작성 중인 문장');
+  assert.equal(saveReflection(state, 'q037').answers.q037.savedNote, '');
+});
+
+test('처음 작성하는 초안도 성찰 저장 전에는 공유 내용에 포함되지 않는다', () => {
+  let state = updateAnswer(initialState(), 'q037', { sel: 0, submitted: true, note: '비공개 초안', sharedWith: ['g1'] });
+  assert.equal(restore(state).answers.q037.savedNote, '');
+  assert.equal(saveReflection(state, 'q037'), state);
+  state = updateAnswer(state, 'q037', { shift: 0 });
+  assert.equal(saveReflection(state, 'q037').answers.q037.savedNote, '비공개 초안');
+});
+
+test('이전 버전의 공개된 성찰은 보존하고 비공개 초안은 공개하지 않는다', () => {
+  const state = restore({ ...initialState(), answers: {
+    q037: { sel: 0, submitted: true, note: '기존 공유 문장', sharedWith: ['g1'] },
+    q036: { sel: 0, submitted: true, note: '기존 초안' },
+    q035: { sel: 0, submitted: true, completed: true, shift: 0, note: '완료한 성찰' },
+  } });
+  assert.equal(state.answers.q037.savedNote, '기존 공유 문장');
+  assert.equal(state.answers.q036.savedNote, '');
+  assert.equal(state.answers.q036.note, '기존 초안');
+  assert.equal(state.answers.q035.savedNote, '완료한 성찰');
+});
+
+test('탭 이동과 새로고침 후 질문별 마지막 단계를 이어 보고 완료한 질문은 기록으로 간다', () => {
+  let state = { ...initialState(), started: true };
+  assert.equal(questionRoute('q037', state.answers.q037), 'question/q037/answer');
+  state = updateAnswer(state, 'q037', { sel: 0, submitted: true });
+  state = rememberQuestionRoute(state, 'question/q037/reading');
+  state = updateAnswer(state, 'q036', { sel: 1, submitted: true });
+  state = rememberQuestionRoute(state, 'question/q036/reflect');
+  state = rememberQuestionRoute(state, 'today');
+  state = restore(state);
+  assert.equal(questionRoute('q037', state.answers.q037), 'question/q037/reading');
+  assert.equal(questionRoute('q036', state.answers.q036), 'question/q036/reflect');
+  state = rememberQuestionRoute(state, 'question/q037/opinions');
+  assert.equal(questionRoute('q037', state.answers.q037), 'question/q037/opinions');
+  state = updateAnswer(state, 'q037', { shift: 0 });
+  state = saveReflection(state, 'q037');
+  assert.equal(questionRoute('q037', state.answers.q037), 'records/q037');
+});
+
+test('잘못된 경로와 온보딩은 진행 단계를 기록하지 않고 직접 접근의 잠금도 유지한다', () => {
+  const initial = initialState();
+  assert.equal(rememberQuestionRoute(initial, 'question/q037/reading'), initial);
+  let state = { ...initial, started: true };
+  for (const route of ['question/unknown/reading', 'question/q037/wrong', 'question/q037/reading/extra']) {
+    assert.equal(rememberQuestionRoute(state, route), state);
+  }
+  state = rememberQuestionRoute(state, 'question/q037/reading');
+  assert.equal(state.answers.q037.lastStep, 'answer');
+  state = updateAnswer(state, 'q037', { sel: 0, submitted: true });
+  state = rememberQuestionRoute(state, 'question/q037/done');
+  assert.equal(state.answers.q037.lastStep, 'reflect');
+  assert.equal(questionRoute('q036', { submitted: true }), 'question/q036/result');
+});
+
+test('필드가 손상된 답변은 정상 문장을 보존하고 잘못된 필드만 복구한다', () => {
+  const state = restore({ ...initialState(), started: 'yes', answers: {
+    q037: { sel: 0, submitted: true, note: '보존할 문장', sharedWith: null, rx: {}, shift: 99, completed: true, shareDraft: 'g1', lastStep: 'invalid', savedNote: null },
+    q036: { sel: 99, submitted: true, note: null, sharedWith: [null, 'g1', 1], rx: ['이해됐어요', null] },
+    q035: null,
+  } });
+  assert.equal(state.started, false);
+  assert.equal(state.answers.q037.note, '보존할 문장');
+  assert.deepEqual(state.answers.q037.sharedWith, []);
+  assert.deepEqual(state.answers.q037.rx, []);
+  assert.equal(state.answers.q037.shift, null);
+  assert.equal(state.answers.q037.completed, false);
+  assert.equal(state.answers.q037.shareDraft, null);
+  assert.equal(state.answers.q037.lastStep, null);
+  assert.equal(state.answers.q037.savedNote, '');
+  assert.equal(state.answers.q036.sel, null);
+  assert.equal(state.answers.q036.submitted, false);
+  assert.equal(state.answers.q036.note, '');
+  assert.deepEqual(state.answers.q036.sharedWith, []);
+  assert.deepEqual(state.answers.q036.rx, ['이해됐어요']);
+  assert.equal(state.answers.q035.note, '');
+  assert.doesNotThrow(() => leaveGroup(state, 'g1'));
+});
+
+test('그룹과 멤버의 손상은 다른 정상 답변을 잃지 않고 복구한다', () => {
+  const saved = { ...initialState(), answers: { q037: { note: '보존할 문장' } }, groups: [
+    null, { id: 'custom', name: null, description: 5, code: null, members: [null, { id: 'm', name: 3 }] },
+    { ...initialState().groups[0], members: null },
+  ], joined: [null, 'g1', 'custom', 'missing'] };
+  const state = restore(saved);
+  assert.equal(state.answers.q037.note, '보존할 문장');
+  assert.deepEqual(state.joined, ['g1', 'custom']);
+  assert.equal(typeof state.groups[0].name, 'string');
+  assert.equal(typeof state.groups[0].members[0].name, 'string');
+  assert.ok(Array.isArray(state.groups[1].members));
+  assert.equal(restore({ ...saved, groups: null }).answers.q037.note, '보존할 문장');
+});
 
 test('질문별 초안과 제출 상태가 서로 섞이지 않는다', () => {
   const initial = initialState();

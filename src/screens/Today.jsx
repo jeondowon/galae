@@ -15,7 +15,7 @@ export default function Today({ state, go, openQuestion }) {
       <h2>{TODAY.title}</h2><p>{TODAY.body}</p>
       <DoneMotif />
       <div className="row card-meta"><span>약 3분이면 충분해요</span><span>{answer?.completed ? '성찰 완료 ✓' : answer?.submitted ? '답변 완료 ✓' : '아직 만나지 않은 생각'}</span></div>
-      <button className="btn-primary" onClick={() => openQuestion(TODAY.id)}>{answer?.submitted ? '나의 답변 이어보기' : '오늘의 갈래 시작하기'}<Icon name="arrow" size={18} /></button>
+      <button className="btn-primary" onClick={() => openQuestion(TODAY.id)}>{answer?.completed ? '나의 기록 보기' : answer?.submitted ? '나의 답변 이어보기' : '오늘의 갈래 시작하기'}<Icon name="arrow" size={18} /></button>
     </section>
     <div className="summary-strip"><div><strong>{answered.length}<small>개</small></strong><span>쌓인 나의 선택</span></div><div><strong>{answered.filter(q => state.answers[q.id].completed).length}<small>개</small></strong><span>남긴 성찰</span></div><div><strong>{groups.length}<small>개</small></strong><span>함께하는 그룹</span></div></div>
     <Section title="함께 걷는 사람들" label="그룹 보기" onClick={() => go('groups')}>
